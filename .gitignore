@@ -1,0 +1,34 @@
+# Vivado generated files
+*.jou
+*.log
+*.str
+*.xpr
+*.bit
+*.ltx
+*.xsa
+*.mcs
+*.prm
+.Xil/
+vivado*/
+*.runs/
+*.cache/
+*.hw/
+*.ip_user_files/
+*.sim/
+*.srcs/
+
+# Simulation outputs
+sim/*.vcd
+sim/*.vvp
+sim/*.lxt
+sim/*.fst
+
+# iVerilog
+*.vvp
+
+# GTKWave
+*.gtkw
+
+# OS
+.DS_Store
+Thumbs.db
