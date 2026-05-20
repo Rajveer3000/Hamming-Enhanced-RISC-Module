@@ -2,6 +2,8 @@
 
 > A hardware-only Single Event Upset (SEU) correction bridge between a microcontroller and RF module, implementing **Hamming(12,8)** encoding and decoding entirely in Verilog — no software-based error correction required.
 
+📄 **Published in:** *Research Forum Proceedings, 1st Edition — IEEE Student Branch JIIT*, January 30 – February 2, 2025, JIIT Noida.
+
 ---
 
 ## Table of Contents
@@ -15,8 +17,9 @@
 - [Simulation](#simulation)
 - [Test Cases & Results](#test-cases--results)
 - [Key Design Decisions](#key-design-decisions)
+- [Publication](#publication)
 - [Future Work](#future-work)
-- [Author](#author)
+- [Authors](#authors)
 
 ---
 
@@ -38,7 +41,7 @@ Conventional systems handle this in firmware: the microcontroller receives corru
 - Firmware complexity
 - MCU overhead during high-throughput communication
 
-**HERM eliminates all of that.** Error correction happens at the hardware level, in a single clock cycle, before data ever reaches the MCU.
+**HERM eliminates all of that.** Error correction happens at the hardware level, in a single propagation delay, before data ever reaches the MCU. While optimized software implementations achieve approximately 45–50 cycles, HERM performs the same correction combinationally — in a single clock cycle.
 
 ---
 
@@ -60,13 +63,22 @@ For a **Hamming(12,8)** code:
 | P4 (pos 4) | 4, 5, 6, 7, 12                  | d1, d2, d3, d7            |
 | P8 (pos 8) | 8, 9, 10, 11, 12                | d4, d5, d6, d7            |
 
+### Parity equations (even parity)
+
+```
+P1 = D0 ⊕ D1 ⊕ D3 ⊕ D4 ⊕ D6
+P2 = D0 ⊕ D2 ⊕ D3 ⊕ D5 ⊕ D6
+P4 = D1 ⊕ D2 ⊕ D3 ⊕ D7
+P8 = D4 ⊕ D5 ⊕ D6 ⊕ D7
+```
+
 ### Syndrome decoding
 
 At the receiver, parity is recomputed from received data positions and XORed with the stored parity bits. The resulting **4-bit syndrome** directly gives the 1-indexed position of the erroneous bit:
 
 ```
 syndrome = 0000  →  No error
-syndrome = 0101  →  Error at position 5 → flip codeword[4]
+syndrome = 0110  →  Error at position 6 → flip codeword[5]
 ```
 
 ---
@@ -110,14 +122,18 @@ Data bits occupy indices **2, 4, 5, 6, 8, 9, 10, 11**.
 ```
 HERM/
 ├── src/
-│   ├── encoder.v       # Hamming(12,8) encoder — 8-bit → 12-bit
-│   ├── decoder.v       # Hamming(12,8) decoder with syndrome correction
-│   └── herm_top.v      # Top-level wrapper with fault-injection channel
+│   ├── encoder.v                          # Hamming(12,8) encoder — 8-bit → 12-bit
+│   ├── decoder.v                          # Hamming(12,8) decoder with syndrome correction
+│   └── herm_top.v                         # Top-level wrapper with fault-injection channel
 ├── tb/
-│   └── herm_tb.v       # Self-checking testbench (3 test cases)
+│   └── herm_tb.v                          # Self-checking testbench (3 test cases)
+├── results/
+│   ├── tcl_console_output.png             # Vivado TCL console: all 3 tests PASS
+│   └── waveform_vivado.png                # Vivado waveform: encoder/decoder signal trace
+├── paper/
+│   └── HERM_IEEE_SB_JIIT_ResearchForum_2025.pdf   # Published paper
 ├── docs/
-│   └── hamming_theory.md   # Extended theory and worked examples
-├── sim/                # Simulation outputs (waveforms, logs) — gitignored
+│   └── hamming_theory.md                  # Extended theory and worked examples
 ├── .gitignore
 └── README.md
 ```
@@ -133,7 +149,7 @@ HERM/
 3. Add `tb/herm_tb.v` as a simulation source
 4. Set `herm_tb` as the top-level simulation module
 5. Run Behavioral Simulation
-6. Observe waveforms and console output
+6. Observe waveforms and TCL console output
 
 ### Using Icarus Verilog (open-source, command line)
 
@@ -143,9 +159,6 @@ iverilog -o herm_sim src/encoder.v src/decoder.v tb/herm_tb.v
 
 # Run
 vvp herm_sim
-
-# View waveforms (add $dumpfile/$dumpvars to tb if needed)
-gtkwave herm_sim.vcd
 ```
 
 ---
@@ -154,63 +167,55 @@ gtkwave herm_sim.vcd
 
 All three test cases verify correct operation of the full encoder → channel → decoder pipeline.
 
-| Test | Input Data | Error Injected          | Syndrome | Result |
-|------|------------|-------------------------|----------|--------|
-| 1    | `0x41` (A) | None (clean channel)    | `0000`   | ✅ PASS |
-| 2    | `0xAA`     | Data bit flip (index 5) | `0110`   | ✅ PASS |
-| 3    | `0xF0`     | Parity flip (P4, index 3)| `0100`  | ✅ PASS |
+| Test | Input Data | Error Injected            | Syndrome | Result  |
+|------|------------|---------------------------|----------|---------|
+| 1    | `0x41` (A) | None (clean channel)      | `0000`   | ✅ PASS |
+| 2    | `0xAA`     | Data bit flip (index 5)   | `0110`   | ✅ PASS |
+| 3    | `0xF0`     | Parity flip (P4, index 3) | `0100`   | ✅ PASS |
 
-### Console output (Vivado / iverilog)
+### TCL Console Output (Xilinx Vivado)
 
-```
-================================================
-   HERM SYSTEM VERIFICATION
-   Hamming(12,8) Encoder-Decoder Pipeline
-================================================
+![TCL Console Output](results/tcl_console_output.png)
 
-[TIME: 40 ns] TEST 1: NO NOISE
-  TX Data    : 0x41  (01000001)
-  Codeword   : 010000010001
-  RX Codeword: 010000010001
-  RX Data    : 0x41  (01000001)
-  STATUS     : PASS — Data Intact
+### Waveform (Xilinx Vivado)
 
-[TIME: 120 ns] TEST 2: SINGLE DATA BIT FLIP (codeword index 5)
-  TX Data      : 0xaa  (10101010)
-  TX Codeword  : 101010110110
-  RX Codeword  : 101010010110  (bit 5 flipped)
-  Syndrome     : 0110  (= decimal 6 → error at position 6)
-  RX Data      : 0xaa  (10101010)
-  STATUS       : PASS — Single-Bit Error Corrected
+![Vivado Waveform](results/waveform_vivado.png)
 
-[TIME: 200 ns] TEST 3: PARITY BIT FLIP (P4 at codeword index 3)
-  TX Data      : 0xf0  (11110000)
-  TX Codeword  : 111100001100
-  RX Codeword  : 111100000100  (P4 flipped)
-  Syndrome     : 0100  (= decimal 4 → error at position 4)
-  RX Data      : 0xf0  (11110000)
-  STATUS       : PASS — Parity Bit Error Handled
-
-================================================
-   VERIFICATION COMPLETE
-   PASSED: 3 / 3    FAILED: 0 / 3
-================================================
-```
+The waveform confirms correct signal propagation across all three test vectors — `data_in`, `encoder_out`, `noisy_channel`, and `data_out` all behave as expected under both clean and fault-injected conditions.
 
 ---
 
 ## Key Design Decisions
 
 ### Why hardware-only?
-Software error correction adds MCU cycles and firmware complexity. A hardware pipeline corrects errors in a single propagation delay — critical for high-throughput or latency-sensitive communication.
+Software error correction adds MCU cycles and firmware complexity. A hardware pipeline corrects errors combinationally — in a single clock cycle — with deterministic, near-zero latency critical for RF communication.
 
 ### Why Hamming(12,8) over simpler codes?
-- Hamming(12,8) corrects **any single-bit error** and detects double-bit errors
+- Corrects **any single-bit error** and detects double-bit errors
 - 33% overhead (4 parity bits for 8 data bits) is acceptable for typical UART/SPI frame sizes
 - The syndrome directly encodes the error position — no lookup table needed
 
 ### Syndrome as direct error pointer
-The 4-bit syndrome value is the 1-indexed position of the erroneous bit. This means correction is a single indexed bit-flip operation (`corrected_codeword[syndrome - 1]`), with no conditional chain or priority encoder required.
+The 4-bit syndrome value is the 1-indexed position of the erroneous bit. Correction is a single indexed bit-flip operation (`corrected_codeword[syndrome - 1]`), with no conditional chain or priority encoder required.
+
+### Comparison with prior work
+| Approach | Latency | Hardware Overhead | MCU Load |
+|----------|---------|-------------------|----------|
+| Software ECC (lookup table) | ~45–50 CPU cycles | None | High |
+| HARV hardened processor | 1 cycle | Very High (unhardened voters) | None |
+| **HERM (this work)** | **1 cycle (combinational)** | **Low** | **None** |
+
+---
+
+## Publication
+
+This work was published in the **Research Forum Proceedings, 1st Edition**  
+**IEEE Student Branch JIIT** — Student Conference, January 30 – February 2, 2025, JIIT Noida.
+
+📄 Full paper available in [`paper/HERM_IEEE_SB_JIIT_ResearchForum_2025.pdf`](paper/HERM_IEEE_SB_JIIT_ResearchForum_2025.pdf)
+
+**Authors:** Nayan Tiwari, Rajveer Taneja, Yashaswini Mahanta  
+Electronics and Communication Engineering, JIIT Noida
 
 ---
 
@@ -219,18 +224,19 @@ The 4-bit syndrome value is the 1-indexed position of the erroneous bit. This me
 - [ ] Extend to **Hamming(16,11)** for wider data paths
 - [ ] Add **SECDED** (Single Error Correct, Double Error Detect) using an overall parity bit
 - [ ] Integrate with a **UART TX/RX** module for full end-to-end communication demo
-- [ ] Synthesize and measure **LUT/FF utilization** on Basys 3 (Artix-7)
+- [ ] Synthesize and report **LUT/FF utilization** on Basys 3 (Artix-7)
 - [ ] Measure **propagation delay** via Vivado timing analysis
-- [ ] Port simulation to **Cadence / ModelSim**
+- [ ] Port to **Cadence / ModelSim** for mixed-signal verification
 
 ---
 
-## Author
+## Authors
 
-**Rajveer Taneja**  
+| Name | Email |
+|------|-------|
+| **Rajveer Taneja** | rajveertaneja2112@gmail.com |
+| Nayan Tiwari | naayan2005@gmail.com |
+| Yashaswini Mahanta | mahantayashaswini@gmail.com |
+
 Electronics and Communication Engineering, JIIT Noida  
 [GitHub](https://github.com/Rajveer3000) · [LinkedIn](https://www.linkedin.com/in/rajveer-taneja-504123305)
-
----
-
-*Shortlisted for publication in the Research Forum Proceedings, 1st Edition of the IEEE Student Branch JIIT Booklet.*
